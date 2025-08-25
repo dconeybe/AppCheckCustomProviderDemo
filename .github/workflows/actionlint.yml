@@ -1,7 +1,7 @@
 on:
   pull_request:
     paths:
-      - .github/
+      - .github/**
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
