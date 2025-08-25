@@ -144,7 +144,7 @@ function coerceResponseCode(value: string): ForcedResponse {
 }
 
 function collapseWhitespace(s: string): string {
-  return s.replaceAll(/\s+/gv, ' ').trim();
+  return s.replaceAll(/\s+/gu, ' ').trim();
 }
 
 const OPTIONS = {
