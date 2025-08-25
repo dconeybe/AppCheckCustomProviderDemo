@@ -7,9 +7,9 @@ import type { AppCheck as FirebaseAppCheck } from 'firebase-admin/app-check';
 import { getAppCheck as getFirebaseAppCheck } from 'firebase-admin/app-check';
 import { ReasonPhrases, StatusCodes } from 'http-status-codes';
 import ms from 'ms';
-import * as signale from 'signale';
+import signale from 'signale';
 
-import { type ForcedResponse, parseArgs } from './argparse';
+import { type ForcedResponse, parseArgs } from './argparse.js';
 
 const logger = new signale.Signale({
   config: {
