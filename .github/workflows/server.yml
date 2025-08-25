@@ -1,13 +1,8 @@
-name: workflows
-
 on:
   pull_request:
-  schedule:
-    - cron: '0 11 * * *' # Run nightly at 11am UTC (3am Pacific, 6am Eastern)
-
-defaults:
-  run:
-    shell: bash
+    paths:
+      - .github/workflows/server.yml
+      - server/
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
@@ -26,8 +21,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: server/package-lock.json
       - run: npm clean-install --fund=false --audit=false
         working-directory: server
       - run: npm run tsc
@@ -44,8 +37,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: server/package-lock.json
       - run: npm clean-install --fund=false --audit=false
         working-directory: server
       - run: npm run prettier:check
@@ -62,8 +53,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
-          cache-dependency-path: server/package-lock.json
       - run: npm clean-install --fund=false --audit=false
         working-directory: server
       - run: npm run lint:check
