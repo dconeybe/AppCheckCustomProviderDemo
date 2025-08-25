@@ -10,7 +10,7 @@ export interface ForcedResponse {
   reason: string;
 }
 
-export interface ParsedArgs {
+export interface ParsedArguments {
   host: string;
   port: number;
   forcedResponse: ForcedResponse | undefined;
@@ -18,7 +18,15 @@ export interface ParsedArgs {
   forcedTtlMillis: number | undefined;
 }
 
-export async function parseArgs(): Promise<ParsedArgs> {
+export class ParseArgumentsError extends Error {
+  override name: 'ParseArgumentsError';
+  constructor(message: string) {
+    super(message);
+    this.name = 'ParseArgumentsError';
+  }
+}
+
+export async function parseArguments(): Promise<ParsedArguments> {
   const yargsResult = await yargs(hideBin(process.argv))
     .usage(USAGE)
     .epilogue(EPILOGUE)
@@ -42,7 +50,7 @@ const USAGE = dedent`
   Usage: $0 [options]
 
   Runs an HTTP server that can be used as a custom AppCheck provider.
-  `;
+`;
 
 const EPILOGUE = dedent`
   The GOOGLE_APPLICATION_CREDENTIALS environment variable must be set to the
@@ -95,14 +103,14 @@ const EPILOGUE = dedent`
       token: data.token,
       expireTimeMillis: Date.now() + data.ttlMillis
     };
-  `;
+`;
 
 function coercePort(value: string): number {
   const port = Number.parseInt(value);
   if (!Number.isInteger(port)) {
-    throw new Error(`invalid port: ${value} (must be a number)`);
+    throw new ParseArgumentsError(`invalid port: ${value} (must be a number)`);
   } else if (port < 0) {
-    throw new Error(
+    throw new ParseArgumentsError(
       `invalid port: ${value} (must be greater than or equal to zero)`
     );
   }
@@ -112,10 +120,10 @@ function coercePort(value: string): number {
 function coerceTtl(value: string): number {
   const ttlMillis: unknown = ms(value as ms.StringValue);
   if (typeof ttlMillis !== 'number' || !Number.isFinite(ttlMillis)) {
-    throw new Error(`invalid TTL: "${value}" (unable to parse)`);
+    throw new ParseArgumentsError(`invalid TTL: "${value}" (unable to parse)`);
   }
   if (ttlMillis < 0) {
-    throw new Error(
+    throw new ParseArgumentsError(
       collapseWhitespace(`
       invalid TTL: ${value} (${ttlMillis} milliseconds)
       (must be greater than or equal to zero)
@@ -129,18 +137,20 @@ function coerceResponseCode(value: string): ForcedResponse {
   try {
     const statusCode = getStatusCode(value);
     return { code: statusCode, reason: value };
-  } catch (_) {
+  } catch {
     // value is not an HTTP reason phrase.
   }
 
   try {
     const reasonPhrase = getReasonPhrase(value);
     return { code: Number.parseInt(value), reason: reasonPhrase };
-  } catch (_) {
+  } catch {
     // value is not an HTTP status code.
   }
 
-  throw new Error('invalid HTTP response code or reason phrase: ' + value);
+  throw new ParseArgumentsError(
+    `invalid HTTP response code or reason phrase: ${value}`
+  );
 }
 
 function collapseWhitespace(s: string): string {
