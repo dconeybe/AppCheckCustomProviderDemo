@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { inspect } from 'node:util';
 
 import type { App as FirebaseApp } from 'firebase-admin/app';
 import { initializeApp as initializeFirebaseApp } from 'firebase-admin/app';
@@ -9,7 +10,7 @@ import { ReasonPhrases, StatusCodes } from 'http-status-codes';
 import ms from 'ms';
 import signale from 'signale';
 
-import { type ForcedResponse, parseArgs } from './argparse.js';
+import { type ForcedResponse, parseArguments } from './argparse.js';
 
 const logger = new signale.Signale({
   config: {
@@ -23,7 +24,7 @@ const MILLIS_FOR_30_MINUTES = MILLIS_PER_MINUTE * 30;
 
 async function main() {
   const { host, port, forcedResponse, forcedToken, forcedTtlMillis } =
-    await parseArgs();
+    await parseArguments();
   logger.info('Initializing firebase-admin sdk');
   const app = initializeFirebaseApp();
   const appCheck = getFirebaseAppCheck(app);
@@ -80,15 +81,16 @@ async function runServer(settings: {
   const httpServer = createServer((request, response) => {
     const requestId = generateRandomAlphaString(6);
     logger.info(
-      `[requestId_${requestId}] Request received from: ` +
-        descriptionForAddress(request.socket.address())
+      `[requestId_${requestId}] Request received from: ${descriptionForAddress(
+        request.socket.address()
+      )}`
     );
 
-    const respondWithError = (
+    function respondWithError(
       code: number,
       reason: string,
       message: string
-    ) => {
+    ): void {
       logger.warn(
         `[requestId_${requestId}] Request failed: ` +
           `${code} (${reason}): ${message}`
@@ -98,7 +100,41 @@ async function runServer(settings: {
         'Access-Control-Allow-Origin': '*'
       });
       response.end(message);
-    };
+    }
+
+    function getStringPropertyOrRespondWithError(
+      body: object,
+      propertyName: string
+    ): string | undefined {
+      if (!(propertyName in body)) {
+        const properties = Object.getOwnPropertyNames(body).sort().join(', ');
+        respondWithError(
+          StatusCodes.BAD_REQUEST,
+          ReasonPhrases.BAD_REQUEST,
+          `The request body is missing the required property ${JSON.stringify(
+            propertyName
+          )}; got properties: ${properties}`
+        );
+        return undefined;
+      }
+
+      // @ts-expect-error The TS compiler complains about `propertyName` not
+      // being a property of `body`, despite the `in` check above.
+      // eslint-disable-next-line security/detect-object-injection
+      const propertyValue: unknown = body[propertyName];
+      if (typeof propertyValue !== 'string') {
+        respondWithError(
+          StatusCodes.BAD_REQUEST,
+          ReasonPhrases.BAD_REQUEST,
+          `The property ${JSON.stringify(propertyName)} of the JSON request ` +
+            `body must be a string, but got: ` +
+            `${typeof propertyValue} (${inspect(propertyValue)})`
+        );
+        return undefined;
+      }
+
+      return propertyValue;
+    }
 
     if (forcedResponse) {
       const { code, reason } = forcedResponse;
@@ -152,6 +188,11 @@ async function runServer(settings: {
 
     const chunks: Array<Uint8Array> = [];
     request.on('data', chunk => {
+      if (!(chunk instanceof Uint8Array)) {
+        throw new TypeError(
+          `expected Uint8Array, but got ${inspect(chunk)} [vv7n8ypk6a]`
+        );
+      }
       chunks.push(chunk);
     });
 
@@ -159,11 +200,11 @@ async function runServer(settings: {
       let bodyText: string;
       try {
         bodyText = Buffer.concat(chunks).toString();
-      } catch (e: unknown) {
+      } catch (error: unknown) {
         respondWithError(
           StatusCodes.BAD_REQUEST,
           ReasonPhrases.BAD_REQUEST,
-          `Decoding the request body as UTF-8 failed: ${e}`
+          `Decoding the request body as UTF-8 failed: ${inspect(error)}`
         );
         return;
       }
@@ -174,17 +215,17 @@ async function runServer(settings: {
         if (contentType === 'application/json') {
           body = JSON.parse(bodyText);
         } else {
-          const searchParams = new URLSearchParams(bodyText);
+          const searchParameters = new URLSearchParams(bodyText);
           body = {
-            appId: searchParams.get('appId'),
-            projectId: searchParams.get('projectId')
+            appId: searchParameters.get('appId'),
+            projectId: searchParameters.get('projectId')
           };
         }
-      } catch (e: unknown) {
+      } catch (error: unknown) {
         respondWithError(
           StatusCodes.BAD_REQUEST,
           ReasonPhrases.BAD_REQUEST,
-          `Parsing the ${contentType} request body failed: ${e}`
+          `Parsing the ${contentType} request body failed: ${inspect(error)}`
         );
         return;
       }
@@ -206,47 +247,16 @@ async function runServer(settings: {
         return;
       }
 
-      if (!('appId' in body)) {
-        respondWithError(
-          StatusCodes.BAD_REQUEST,
-          ReasonPhrases.BAD_REQUEST,
-          "The request body must have an 'appId' property, " +
-            'but got properties: ' +
-            Object.getOwnPropertyNames(body).sort().join(', ')
-        );
+      const appId = getStringPropertyOrRespondWithError(body, 'appId');
+      if (!appId) {
         return;
       }
 
-      const appId = body['appId'];
-      if (typeof appId !== 'string') {
-        respondWithError(
-          StatusCodes.BAD_REQUEST,
-          ReasonPhrases.BAD_REQUEST,
-          `The 'appId' property of the JSON request body must be a string, ` +
-            `but got: ${typeof appId}`
-        );
-        return;
-      }
-
-      if (!('projectId' in body)) {
-        respondWithError(
-          StatusCodes.BAD_REQUEST,
-          ReasonPhrases.BAD_REQUEST,
-          "The JSON request body must have an 'projectId' property, " +
-            'but got properties: ' +
-            Object.getOwnPropertyNames(body).sort().join(', ')
-        );
-        return;
-      }
-
-      const projectIdFromRequest = body['projectId'];
-      if (typeof projectId !== 'string') {
-        respondWithError(
-          StatusCodes.BAD_REQUEST,
-          ReasonPhrases.BAD_REQUEST,
-          `The 'projectId' property of the JSON request body must be a string, ` +
-            `but got: ${typeof projectId}`
-        );
+      const projectIdFromRequest = getStringPropertyOrRespondWithError(
+        body,
+        'projectId'
+      );
+      if (!projectIdFromRequest) {
         return;
       }
 
@@ -287,18 +297,18 @@ async function runServer(settings: {
           });
           response.end(responseBody);
         })
-        .catch((err: unknown) => {
+        .catch((error: unknown) => {
           respondWithError(
             StatusCodes.INTERNAL_SERVER_ERROR,
             ReasonPhrases.INTERNAL_SERVER_ERROR,
-            `Creating App Check token failed: ${err}`
+            `Creating App Check token failed: ${inspect(error)}`
           );
         });
     });
   });
 
   httpServer.listen(port, host, () => {
-    logger.info('Listening on ' + descriptionForAddress(httpServer.address()));
+    logger.info(`Listening on ${descriptionForAddress(httpServer.address())}`);
     if (forcedResponse) {
       logger.note(
         'HTTP server will unconditionally return HTTP status code ' +
@@ -328,7 +338,8 @@ async function runServer(settings: {
 function generateRandomAlphaString(length: number): string {
   const characters = 'bcdefghjkmnpqrstvwxyz';
   let result = '';
-  for (let i = 0; i < length; i++) {
+  while (length > 0) {
+    length--;
     result += characters.charAt(Math.floor(Math.random() * characters.length));
   }
   return result;
@@ -344,8 +355,8 @@ function descriptionForAddress(
   } else if ('address' in address && 'port' in address) {
     return `${address.address}:${address.port}`;
   } else {
-    return `${address}`;
+    return inspect(address);
   }
 }
 
-main();
+await main();

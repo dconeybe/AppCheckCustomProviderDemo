@@ -1,38 +1,76 @@
-// @ts-check
+import pluginJs from '@eslint/js';
+import securityPlugin from 'eslint-plugin-security';
+import simpleImportSortPlugin from 'eslint-plugin-simple-import-sort';
+import unicornPlugin from 'eslint-plugin-unicorn';
+import globals from 'globals';
+import tsPlugin from 'typescript-eslint';
 
-import eslint from '@eslint/js';
-import simpleImportSort from 'eslint-plugin-simple-import-sort';
-import tseslint from 'typescript-eslint';
-
-export default tseslint.config(
-  eslint.configs.recommended,
-  ...tseslint.configs.recommended,
+const config = tsPlugin.config(
   {
-    'ignores': ['build/**/*', 'dist/**/*', 'resources/**/*']
+    ignores: ['eslint.config.mjs', 'build']
   },
+  pluginJs.configs.recommended,
+  tsPlugin.configs.strictTypeChecked,
+  securityPlugin.configs.recommended,
   {
-    'rules': {
-      '@typescript-eslint/no-unused-vars': [
+    files: ['**/*.ts'],
+    languageOptions: {
+      globals: globals.node,
+      parserOptions: {
+        projectService: {
+          allowDefaultProject: ['eslint.config.mjs'],
+          defaultProject: 'tsconfig.eslint.json'
+        }
+      }
+    },
+    rules: {
+      'func-style': ['error', 'declaration', { allowArrowFunctions: true }],
+      'no-restricted-syntax': ['off', 'ForOfStatement'],
+      'no-console': ['error'],
+      'prefer-template': 'error',
+      'security/detect-non-literal-fs-filename': 'off',
+      '@typescript-eslint/restrict-template-expressions': [
         'error',
         {
-          'args': 'all',
-          'argsIgnorePattern': '_',
-          'caughtErrors': 'all',
-          'caughtErrorsIgnorePattern': '_',
-          'destructuredArrayIgnorePattern': '_',
-          'varsIgnorePattern': '_',
-          'ignoreRestSiblings': true
+          allowBoolean: true,
+          allowNullish: true,
+          allowNumber: true
+        }
+      ],
+      '@typescript-eslint/consistent-type-definitions': ['error', 'interface']
+    }
+  },
+  unicornPlugin.configs.all,
+  {
+    rules: {
+      'unicorn/empty-brace-spaces': 'off',
+      'unicorn/no-null': 'off',
+      'unicorn/filename-case': [
+        'error',
+        {
+          'case': 'snakeCase'
         }
       ]
     }
   },
+
   {
     plugins: {
-      'simple-import-sort': simpleImportSort
+      'simple-import-sort': simpleImportSortPlugin
     },
     rules: {
       'simple-import-sort/imports': 'error',
       'simple-import-sort/exports': 'error'
     }
+  },
+
+  {
+    files: ['test/**/*.ts'],
+    rules: {
+      'security/detect-non-literal-regexp': 'off',
+      'security/detect-object-injection': 'off'
+    }
   }
 );
+
+export default config;
